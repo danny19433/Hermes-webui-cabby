@@ -1,23 +1,49 @@
 services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
+  hermes:
+    image: nousresearch/hermes-agent:latest
+    container_name: hermes
     restart: unless-stopped
+    command: gateway run
     ports:
-      - "11434:11434"
+      - "8642:8642"
     volumes:
-      - ./hermes-data:/root/.ollama
-
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: open-webui
-    restart: unless-stopped
-    depends_on:
-      - ollama
-    ports:
-      - "3000:8080"
+      - ./hermes-data:/opt/data
     environment:
-      OLLAMA_BASE_URL: http://ollama:11434
-      WEBUI_AUTH: "true"
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: "0.0.0.0"
+      API_SERVER_KEY: ${API_SERVER_KEY}
+      API_SERVER_CORS_ORIGINS: "*"
+      HERMES_DASHBOARD: "0"
+    networks:
+      - hermes-net
+
+  webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: hermes-webui
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      OPENAI_API_BASE_URL: "http://hermes:8642/v1"
+      OPENAI_API_KEY: ${API_SERVER_KEY}
+    depends_on:
+      - hermes
     volumes:
       - ./open-webui-data:/app/backend/data
+    networks:
+      - hermes-net
+
+  caddy:
+    image: caddy:latest
+    container_name: hermes-caddy
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    volumes:
+      - ./hermes-data:/srv:ro
+    networks:
+      - hermes-net
+
+networks:
+  hermes-net:
+    driver: bridge
