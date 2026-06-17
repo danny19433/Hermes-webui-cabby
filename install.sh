@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$APP_DIR/docker-compose.yml}"
+ENV_FILE="${ENV_FILE:-$APP_DIR/.env}"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$APP_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')}"
 
 SUDO_CMD=()
@@ -132,6 +133,31 @@ install_docker_if_needed() {
   fi
 }
 
+ensure_app_files() {
+  info "Creating data directories..."
+  mkdir -p "$APP_DIR/hermes-data" "$APP_DIR/open-webui-data"
+
+  if [ ! -f "$ENV_FILE" ]; then
+    info "Creating .env template..."
+    printf 'API_SERVER_KEY=\n' >"$ENV_FILE"
+  elif ! grep -q '^API_SERVER_KEY=' "$ENV_FILE"; then
+    info "Adding API_SERVER_KEY to .env..."
+    printf '\nAPI_SERVER_KEY=\n' >>"$ENV_FILE"
+  fi
+
+  if ! grep -Eq '^API_SERVER_KEY=.+$' "$ENV_FILE"; then
+    warn "API_SERVER_KEY is empty. Please fill it in before containers start."
+
+    if command_exists nano; then
+      nano "$ENV_FILE"
+    else
+      warn "nano is not installed. Edit this file manually: $ENV_FILE"
+    fi
+  fi
+
+  grep -Eq '^API_SERVER_KEY=.+$' "$ENV_FILE" || die "API_SERVER_KEY is still empty in $ENV_FILE"
+}
+
 start_docker_daemon() {
   if docker info >/dev/null 2>&1 || run_root docker info >/dev/null 2>&1; then
     info "Docker daemon is running."
@@ -169,18 +195,45 @@ validate_compose_file() {
   [ -s "$COMPOSE_FILE" ] || die "Compose file is empty: $COMPOSE_FILE"
 
   info "Validating Docker Compose file..."
-  docker_cli compose -f "$COMPOSE_FILE" --project-name "$PROJECT_NAME" config >/dev/null
+  docker_cli compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --project-name "$PROJECT_NAME" config >/dev/null
+}
+
+wait_for_container() {
+  local container_name="$1"
+  local attempt
+
+  for attempt in $(seq 1 30); do
+    if [ "$(docker_cli inspect -f '{{.State.Running}}' "$container_name" 2>/dev/null || true)" = "true" ]; then
+      return 0
+    fi
+
+    sleep 2
+  done
+
+  die "Container is not running: $container_name"
+}
+
+configure_hermes_model() {
+  info "Starting Hermes before model setup..."
+  docker_cli compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --project-name "$PROJECT_NAME" up -d hermes
+  wait_for_container hermes
+
+  info "Opening Hermes model setup..."
+  docker_cli exec -it hermes hermes model
 }
 
 compose_up() {
+  configure_hermes_model
+
   info "Starting containers with docker compose up -d..."
-  docker_cli compose -f "$COMPOSE_FILE" --project-name "$PROJECT_NAME" up -d
-  docker_cli compose -f "$COMPOSE_FILE" --project-name "$PROJECT_NAME" ps
+  docker_cli compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --project-name "$PROJECT_NAME" up -d
+  docker_cli compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --project-name "$PROJECT_NAME" ps
 }
 
 main() {
   ensure_linux
   ensure_root_runner
+  ensure_app_files
   install_docker_if_needed
   start_docker_daemon
   validate_compose_file
