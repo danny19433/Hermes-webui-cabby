@@ -61,6 +61,46 @@ load_os_release() {
   fi
 }
 
+sync_system_clock() {
+  if ! command_exists apt-get; then
+    return
+  fi
+
+  info "Checking system clock before apt operations..."
+  info "Current UTC time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+  if command_exists timedatectl; then
+    run_root timedatectl set-ntp true >/dev/null 2>&1 ||
+      warn "Could not enable NTP with timedatectl. If apt reports time errors, fix the host clock manually."
+  else
+    warn "timedatectl is not available. If apt reports time errors, fix the host clock manually."
+  fi
+
+  if command_exists systemctl; then
+    run_root systemctl enable --now systemd-timesyncd >/dev/null 2>&1 || true
+    run_root systemctl restart systemd-timesyncd >/dev/null 2>&1 || true
+  elif command_exists service; then
+    run_root service systemd-timesyncd restart >/dev/null 2>&1 || true
+  fi
+
+  if command_exists timedatectl; then
+    local attempt
+    local synced
+
+    for attempt in $(seq 1 5); do
+      synced="$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)"
+      if [ "$synced" = "yes" ]; then
+        info "System clock is synchronized."
+        return
+      fi
+
+      sleep 1
+    done
+  fi
+
+  warn "System clock may not be synchronized yet. If apt fails with 'Release file ... is not valid yet', run: sudo timedatectl set-ntp true"
+}
+
 install_docker_with_apt() {
   local repo_id="${ID:-}"
   local codename="${VERSION_CODENAME:-}"
@@ -233,6 +273,7 @@ compose_up() {
 main() {
   ensure_linux
   ensure_root_runner
+  sync_system_clock
   ensure_app_files
   install_docker_if_needed
   start_docker_daemon
