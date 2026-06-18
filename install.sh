@@ -5,6 +5,7 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$APP_DIR/docker-compose.yml}"
 ENV_FILE="${ENV_FILE:-$APP_DIR/.env}"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$APP_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')}"
+APT_LOCK_TIMEOUT="${APT_LOCK_TIMEOUT:-600}"
 
 SUDO_CMD=()
 
@@ -27,6 +28,11 @@ command_exists() {
 
 run_root() {
   "${SUDO_CMD[@]}" "$@"
+}
+
+apt_get() {
+  info "Running apt-get $* (waiting up to ${APT_LOCK_TIMEOUT}s for package manager locks)..."
+  run_root apt-get -o "DPkg::Lock::Timeout=${APT_LOCK_TIMEOUT}" "$@"
 }
 
 ensure_linux() {
@@ -119,8 +125,8 @@ install_docker_with_apt() {
   [ -n "$codename" ] || die "Cannot detect distribution codename for Docker apt repository."
 
   info "Installing Docker Engine and Docker Compose plugin from Docker apt repository..."
-  run_root apt-get update
-  run_root apt-get install -y ca-certificates curl gnupg
+  apt_get update
+  apt_get install -y ca-certificates curl gnupg
   run_root install -m 0755 -d /etc/apt/keyrings
 
   if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
@@ -132,8 +138,8 @@ install_docker_with_apt() {
     "$(dpkg --print-architecture)" "$repo_id" "$codename" |
     run_root tee /etc/apt/sources.list.d/docker.list >/dev/null
 
-  run_root apt-get update
-  run_root apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  apt_get update
+  apt_get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 }
 
 install_compose_with_package_manager() {
@@ -145,8 +151,8 @@ install_compose_with_package_manager() {
     fi
 
     info "Installing Docker Compose plugin..."
-    run_root apt-get update
-    run_root apt-get install -y docker-compose-plugin
+    apt_get update
+    apt_get install -y docker-compose-plugin
     return
   fi
 
