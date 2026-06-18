@@ -175,7 +175,8 @@ install_docker_if_needed() {
 
 ensure_app_files() {
   info "Creating data directories..."
-  mkdir -p "$APP_DIR/hermes-data" "$APP_DIR/open-webui-data"
+  mkdir -p "$APP_DIR/hermes-data" "$APP_DIR/open-webui-data" "$APP_DIR/public-media"
+  chmod 755 "$APP_DIR/public-media" || true
 
   if [ ! -f "$ENV_FILE" ]; then
     info "Creating .env template..."

@@ -40,7 +40,11 @@ services:
     ports:
       - "8082:80"
     volumes:
-      - ./hermes-data:/srv:ro
+      - ./public-media:/srv:ro
+    command: >
+      caddy file-server
+      --root /srv
+      --listen :80
     networks:
       - hermes-net
 
