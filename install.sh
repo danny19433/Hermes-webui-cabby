@@ -6,6 +6,8 @@ COMPOSE_FILE="${COMPOSE_FILE:-$APP_DIR/docker-compose.yml}"
 ENV_FILE="${ENV_FILE:-$APP_DIR/.env}"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$APP_DIR" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')}"
 APT_LOCK_TIMEOUT="${APT_LOCK_TIMEOUT:-600}"
+HERMES_UID="${HERMES_UID:-10000}"
+HERMES_GID="${HERMES_GID:-10000}"
 
 SUDO_CMD=()
 
@@ -182,7 +184,8 @@ install_docker_if_needed() {
 ensure_app_files() {
   info "Creating data directories..."
   mkdir -p "$APP_DIR/hermes-data" "$APP_DIR/open-webui-data" "$APP_DIR/public-media"
-  chmod 755 "$APP_DIR/public-media" || true
+  run_root chown -R "$HERMES_UID:$HERMES_GID" "$APP_DIR/public-media" || true
+  chmod 777 "$APP_DIR/public-media" || true
 
   if [ ! -f "$ENV_FILE" ]; then
     info "Creating .env template..."
