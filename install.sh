@@ -185,7 +185,7 @@ ensure_app_files() {
   info "Creating data directories..."
   mkdir -p "$APP_DIR/hermes-data" "$APP_DIR/open-webui-data" "$APP_DIR/public-media"
   run_root chown -R "$HERMES_UID:$HERMES_GID" "$APP_DIR/public-media" || true
-  chmod 777 "$APP_DIR/public-media" || true
+  chmod 775 "$APP_DIR/public-media" || true
 
   if [ ! -f "$ENV_FILE" ]; then
     info "Creating .env template..."
